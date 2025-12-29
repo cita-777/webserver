@@ -473,6 +473,7 @@ impl Response {
         }
         // 获取各字段的&str
         let version: &str = match self.version {
+            HttpVersion::V1_0 => "HTTP/1.0",
             HttpVersion::V1_1 => "HTTP/1.1",
         };
         let status_code: &str = &self.status_code.to_string();

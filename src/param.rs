@@ -172,6 +172,7 @@ lazy_static! {
 
 #[derive(Debug, Clone, Copy)]
 pub enum HttpVersion {
+    V1_0,
     V1_1,
 }
 
@@ -195,6 +196,7 @@ use std::fmt;
 impl fmt::Display for HttpVersion {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match *self {
+            HttpVersion::V1_0 => write!(f, "1.0"),
             HttpVersion::V1_1 => write!(f, "1.1"),
         }
     }

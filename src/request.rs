@@ -47,7 +47,8 @@ impl Request {
         let path = first_line[1].to_string();
         let version_str = first_line[2].to_uppercase();
         let version = match version_str.as_str() {
-            // 当前只支持1.1
+            // 支持 HTTP/1.0 和 HTTP/1.1
+            r"HTTP/1.0" => HttpVersion::V1_0,
             r"HTTP/1.1" => HttpVersion::V1_1,
             _ => {
                 error!("[ID{}]不支持的HTTP协议版本：{}", id, &version_str);

@@ -47,35 +47,36 @@
 - 通过 [log4rs](https://github.com/estk/log4rs) 支持简单的日志系统，支持记录到文件或标准输出
 - 通过一个 FIFO 的文件缓存减少磁盘 I/O 的次数
 - 支持文件列表模式（课程设计加分点）
-    - 支持超链接跳转
-    - 文件列表自动排序
-    - 表格排版，清晰易读
+  - 支持超链接跳转
+  - 文件列表自动排序
+  - 表格排版，清晰易读
 - 状态码页面动态生成
 - 简单的 PHP 页面支持（课程设计主要加分点）
 
 各种请求方法的测试：
+
 - GET：使用浏览器测试即可
 - HEAD
-    ```bash
-    eslzzyl:~$ curl --head 127.0.0.1:7878/ -i
-    HTTP/1.1 200 OK
-    Content-Length: 858
-    Date: Mon, 19 Jun 2023 09:38:16 +0000
-    Server: eslzzyl-webserver
-    ```
+  ```bash
+  eslzzyl:~$ curl --head 127.0.0.1:7878/ -i
+  HTTP/1.1 200 OK
+  Content-Length: 858
+  Date: Mon, 19 Jun 2023 09:38:16 +0000
+  Server: eslzzyl-webserver
+  ```
 - OPTIONS
-    ```bash
-    eslzzyl:~$ curl -X OPTIONS 127.0.0.1:7878 -i
-    HTTP/1.1 204 No Content
-    Content-Length: 0
-    Date: Mon, 19 Jun 2023 09:22:51 +0000
-    Server: eslzzyl-webserver
-    Allow: GET, HEAD, OPTIONS
-    ```
+  ```bash
+  eslzzyl:~$ curl -X OPTIONS 127.0.0.1:7878 -i
+  HTTP/1.1 204 No Content
+  Content-Length: 0
+  Date: Mon, 19 Jun 2023 09:22:51 +0000
+  Server: eslzzyl-webserver
+  Allow: GET, HEAD, OPTIONS
+  ```
 
 ### 构建 / Build
 
-安装最新的 Rust stable 工具链：[此处](https://www.rust-lang.org/learn/get-started)。我在编写代码时使用的版本是`1.69.0`。
+安装最新的 Rust stable 工具链：[此处](https://www.rust-lang.org/learn/get-started)。我在编写代码时使用的版本是 `1.69.0`。
 
 Clone 本仓库，然后执行
 
@@ -89,22 +90,22 @@ cargo build --release
 
 1. 安装 PHP 环境。在 Ubuntu 下，执行
 
-    ```bash
-    sudo apt install php
-    ```
+   ```bash
+   sudo apt install php
+   ```
 
-    - 在其他系统（如 Windows）中，可能需要手动配置环境变量。
-    - PHP 不是必要的，但是没有 PHP 环境则无法使用 PHP 扩展，服务器将返回 500 状态码。
-
+   - 在其他系统（如 Windows）中，可能需要手动配置环境变量。
+   - PHP 不是必要的，但是没有 PHP 环境则无法使用 PHP 扩展，服务器将返回 500 状态码。
 2. 启动服务器
 
-    ```bash
-    cargo run --release
-    ```
+   ```bash
+   cargo run --release
+   ```
 
 服务器默认在 `127.0.0.1` 监听，默认的端口是 `7878`，但可以在配置文件 `files/config.toml` 中更改。
 
 如果要在云服务器上运行：
+
 - 将 `files/config.toml` 中的 `local` 项改为 `false`
 - 在云服务器防火墙或安全组管理中放通指定的 **TCP 入站端口**（默认端口为 7878）
 - 这个玩具服务器**很不安全**，特别是 PHP 支持的部分，没有任何安全防护措施。**一定不要**让它在公网环境长期运行，否则你的服务器可能会被入侵！
@@ -112,6 +113,7 @@ cargo build --release
 程序启动后，打开浏览器，访问 `127.0.0.1:7878`。如果运行在公网，则将 IP 替换为对应的公网 IP。
 
 默认的 Web 根文件夹是 `./files/html/`，但是可以在配置文件中修改。
+
 - 浏览器尝试请求 `/` 时，服务器将返回根文件夹下的 `index.html`。
 - 浏览器尝试请求文件夹时，服务器将返回该文件夹下的文件列表。
 
@@ -126,11 +128,13 @@ cargo build --release
 #### 暂时提升 `nlimit` 限制
 
 `cargo run --release` 启动之后，查找进程PID
+
 ```bash
 ps -e | grep webserver
 ```
 
 然后暂时提升限制
+
 ```bash
 sudo prlimit --pid [PID] --nofile=32768:32768
 ```
@@ -141,51 +145,229 @@ sudo prlimit --pid [PID] --nofile=32768:32768
 
 - 本机：
 
-    ```bash
-    eslzzyl:~/W/c/webbench-1.5 $ ./webbench -c 10000 -t 10 --get --http11 http://127.0.0.1:7878/
-    Webbench - Simple Web Benchmark 1.5
-    Copyright (c) Radim Kolar 1997-2004, GPL Open Source Software.
+  ```bash
+  eslzzyl:~/W/c/webbench-1.5 $ ./webbench -c 10000 -t 10 --get --http11 http://127.0.0.1:7878/
+  Webbench - Simple Web Benchmark 1.5
+  Copyright (c) Radim Kolar 1997-2004, GPL Open Source Software.
 
-    Benchmarking: GET http://127.0.0.1:7878/ (using HTTP/1.1)
-    10000 clients, running 10 sec.
+  Benchmarking: GET http://127.0.0.1:7878/ (using HTTP/1.1)
+  10000 clients, running 10 sec.
 
-    Speed=2991498 pages/min, 44423480 bytes/sec.
-    Requests: 498583 susceed, 0 failed.
-    ```
+  Speed=2991498 pages/min, 44423480 bytes/sec.
+  Requests: 498583 susceed, 0 failed.
+  ```
 
-    测试 20000 并发时，端口号不够用了。肯定是我代码的问题，正常不应该是这样的。总之 10000 并发肯定是有的。
+  测试 20000 并发时，端口号不够用了。肯定是我代码的问题，正常不应该是这样的。总之 10000 并发肯定是有的。
 
-    测试机器：AMD Ryzen 5 4600U, 16G DDR4, Ubuntu 22.04
-
+  测试机器：AMD Ryzen 5 4600U, 16G DDR4, Ubuntu 22.04
 - 远程服务器：
 
-    ```bash
-    eslzzyl:~/W/c/webbench-1.5 $ ./webbench -c 10000 -t 10 --get --http11 http://xx.xx.xx.xx:7878/
-    Webbench - Simple Web Benchmark 1.5
-    Copyright (c) Radim Kolar 1997-2004, GPL Open Source Software.
-    
-    Benchmarking: GET http://xx.xx.xx.xx:7878/ (using HTTP/1.1)
-    10000 clients, running 10 sec.
-    
-    Speed=6864 pages/min, 101930 bytes/sec.
-    Requests: 1144 susceed, 0 failed.
-    ```
+  thread 'tokio-runtime-worker' (8387) panicked at src/main.rs:209:50:
+  called `Result::unwrap()` on an `Err` value: UnsupportedHttpVersion
+  2025-12-29 15:07:48 [ERROR] webserver::request - [ID956]不支持的HTTP协议版本：HTTP/1.0
 
-    ```bash
-    eslzzyl:~/W/c/webbench-1.5 $ ./webbench -c 12000 -t 10 --get --http11 http://xx.xx.xx.xx:7878/
-    Webbench - Simple Web Benchmark 1.5
-    Copyright (c) Radim Kolar 1997-2004, GPL Open Source Software.
-    
-    Benchmarking: GET http://xx.xx.xx.xx:7878/ (using HTTP/1.1)
-    12000 clients, running 10 sec.
-    
-    Speed=5430 pages/min, 81993 bytes/sec.
-    Requests: 905 susceed, 0 failed.
-    ```
+  thread 'tokio-runtime-worker' (8387) panicked at src/main.rs:209:50:
+  called `Result::unwrap()` on an `Err` value: UnsupportedHttpVersion
+  2025-12-29 15:07:48 [ERROR] webserver::request - [ID957]不支持的HTTP协议版本：HTTP/1.0
 
-    测试 20000 并发时同样出现问题。
+  thread 'tokio-runtime-worker' (8387) panicked at src/main.rs:209:50:
+  called `Result::unwrap()` on an `Err` value: UnsupportedHttpVersion
+  2025-12-29 15:07:48 [ERROR] webserver::request - [ID958]不支持的HTTP协议版本：HTTP/1.0
 
-    测试机器：腾讯云上海 1核 2G 1M, Ubuntu 22.04
+  thread 'tokio-runtime-worker' (8387) panicked at src/main.rs:209:50:
+  called `Result::unwrap()` on an `Err` value: UnsupportedHttpVersion
+  2025-12-29 15:07:48 [ERROR] webserver::request - [ID959]不支持的HTTP协议版本：HTTP/1.0
+
+  thread 'tokio-runtime-worker' (8387) panicked at src/main.rs:209:50:
+  called `Result::unwrap()` on an `Err` value: UnsupportedHttpVersion
+  2025-12-29 15:07:48 [ERROR] webserver::request - [ID960]不支持的HTTP协议版本：HTTP/1.0
+
+  thread 'tokio-runtime-worker' (8387) panicked at src/main.rs:209:50:
+  called `Result::unwrap()` on an `Err` value: UnsupportedHttpVersion
+  2025-12-29 15:07:48 [ERROR] webserver::request - [ID961]不支持的HTTP协议版本：HTTP/1.0
+
+  thread 'tokio-runtime-worker' (8387) panicked at src/main.rs:209:50:
+  called `Result::unwrap()` on an `Err` value: UnsupportedHttpVersion
+  2025-12-29 15:07:48 [ERROR] webserver::request - [ID962]不支持的HTTP协议版本：HTTP/1.0
+
+  thread 'tokio-runtime-worker' (8387) panicked at src/main.rs:209:50:
+  called `Result::unwrap()` on an `Err` value: UnsupportedHttpVersion
+  2025-12-29 15:07:48 [ERROR] webserver::request - [ID963]不支持的HTTP协议版本：HTTP/1.0
+
+  thread 'tokio-runtime-worker' (8387) panicked at src/main.rs:209:50:
+  called `Result::unwrap()` on an `Err` value: UnsupportedHttpVersion
+  2025-12-29 15:07:48 [ERROR] webserver::request - [ID964]不支持的HTTP协议版本：HTTP/1.0
+
+  thread 'tokio-runtime-worker' (8387) panicked at src/main.rs:209:50:
+  called `Result::unwrap()` on an `Err` value: UnsupportedHttpVersion
+  2025-12-29 15:07:48 [ERROR] webserver::request - [ID965]不支持的HTTP协议版本：HTTP/1.0
+
+  thread 'tokio-runtime-worker' (8387) panicked at src/main.rs:209:50:
+  called `Result::unwrap()` on an `Err` value: UnsupportedHttpVersion
+  2025-12-29 15:07:48 [ERROR] webserver::request - [ID966]不支持的HTTP协议版本：HTTP/1.0
+
+  thread 'tokio-runtime-worker' (8387) panicked at src/main.rs:209:50:
+  called `Result::unwrap()` on an `Err` value: UnsupportedHttpVersion
+  2025-12-29 15:07:48 [ERROR] webserver::request - [ID967]不支持的HTTP协议版本：HTTP/1.0
+
+  thread 'tokio-runtime-worker' (8387) panicked at src/main.rs:209:50:
+  called `Result::unwrap()` on an `Err` value: UnsupportedHttpVersion
+  2025-12-29 15:07:48 [ERROR] webserver::request - [ID968]不支持的HTTP协议版本：HTTP/1.0
+
+  thread 'tokio-runtime-worker' (8387) panicked at src/main.rs:209:50:
+  called `Result::unwrap()` on an `Err` value: UnsupportedHttpVersion
+  2025-12-29 15:07:48 [ERROR] webserver::request - [ID969]不支持的HTTP协议版本：HTTP/1.0
+
+  thread 'tokio-runtime-worker' (8387) panicked at src/main.rs:209:50:
+  called `Result::unwrap()` on an `Err` value: UnsupportedHttpVersion
+  2025-12-29 15:07:48 [ERROR] webserver::request - [ID970]不支持的HTTP协议版本：HTTP/1.0
+
+  thread 'tokio-runtime-worker' (8387) panicked at src/main.rs:209:50:
+  called `Result::unwrap()` on an `Err` value: UnsupportedHttpVersion
+  2025-12-29 15:07:48 [ERROR] webserver::request - [ID971]不支持的HTTP协议版本：HTTP/1.0
+
+  thread 'tokio-runtime-worker' (8387) panicked at src/main.rs:209:50:
+  called `Result::unwrap()` on an `Err` value: UnsupportedHttpVersion
+  2025-12-29 15:07:48 [ERROR] webserver::request - [ID972]不支持的HTTP协议版本：HTTP/1.0
+
+  thread 'tokio-runtime-worker' (8387) panicked at src/main.rs:209:50:
+  called `Result::unwrap()` on an `Err` value: UnsupportedHttpVersion
+  2025-12-29 15:07:48 [ERROR] webserver::request - [ID973]不支持的HTTP协议版本：HTTP/1.0
+
+  thread 'tokio-runtime-worker' (8387) panicked at src/main.rs:209:50:
+  called `Result::unwrap()` on an `Err` value: UnsupportedHttpVersion
+  2025-12-29 15:07:48 [ERROR] webserver::request - [ID974]不支持的HTTP协议版本：HTTP/1.0
+
+  thread 'tokio-runtime-worker' (8387) panicked at src/main.rs:209:50:
+  called `Result::unwrap()` on an `Err` value: UnsupportedHttpVersion
+  2025-12-29 15:07:48 [ERROR] webserver::request - [ID975]不支持的HTTP协议版本：HTTP/1.0
+
+  thread 'tokio-runtime-worker' (8387) panicked at src/main.rs:209:50:
+  called `Result::unwrap()` on an `Err` value: UnsupportedHttpVersion
+  2025-12-29 15:07:48 [ERROR] webserver::request - [ID976]不支持的HTTP协议版本：HTTP/1.0
+
+  thread 'tokio-runtime-worker' (8387) panicked at src/main.rs:209:50:
+  called `Result::unwrap()` on an `Err` value: UnsupportedHttpVersion
+  2025-12-29 15:07:48 [ERROR] webserver::request - [ID977]不支持的HTTP协议版本：HTTP/1.0
+
+  thread 'tokio-runtime-worker' (8387) panicked at src/main.rs:209:50:
+  called `Result::unwrap()` on an `Err` value: UnsupportedHttpVersion
+  2025-12-29 15:07:48 [ERROR] webserver::request - [ID978]不支持的HTTP协议版本：HTTP/1.0
+
+  thread 'tokio-runtime-worker' (8387) panicked at src/main.rs:209:50:
+  called `Result::unwrap()` on an `Err` value: UnsupportedHttpVersion
+  2025-12-29 15:07:48 [ERROR] webserver::request - [ID979]不支持的HTTP协议版本：HTTP/1.0
+
+  thread 'tokio-runtime-worker' (8387) panicked at src/main.rs:209:50:
+  called `Result::unwrap()` on an `Err` value: UnsupportedHttpVersion
+  2025-12-29 15:07:48 [ERROR] webserver::request - [ID980]不支持的HTTP协议版本：HTTP/1.0
+
+  thread 'tokio-runtime-worker' (8387) panicked at src/main.rs:209:50:
+  called `Result::unwrap()` on an `Err` value: UnsupportedHttpVersion
+  2025-12-29 15:07:48 [ERROR] webserver::request - [ID981]不支持的HTTP协议版本：HTTP/1.0
+
+  thread 'tokio-runtime-worker' (8387) panicked at src/main.rs:209:50:
+  called `Result::unwrap()` on an `Err` value: UnsupportedHttpVersion
+  2025-12-29 15:07:48 [ERROR] webserver::request - [ID982]不支持的HTTP协议版本：HTTP/1.0
+
+  thread 'tokio-runtime-worker' (8387) panicked at src/main.rs:209:50:
+  called `Result::unwrap()` on an `Err` value: UnsupportedHttpVersion
+  2025-12-29 15:07:48 [ERROR] webserver::request - [ID983]不支持的HTTP协议版本：HTTP/1.0
+
+  thread 'tokio-runtime-worker' (8387) panicked at src/main.rs:209:50:
+  called `Result::unwrap()` on an `Err` value: UnsupportedHttpVersion
+  2025-12-29 15:07:48 [ERROR] webserver::request - [ID984]不支持的HTTP协议版本：HTTP/1.0
+
+  thread 'tokio-runtime-worker' (8387) panicked at src/main.rs:209:50:
+  called `Result::unwrap()` on an `Err` value: UnsupportedHttpVersion
+  2025-12-29 15:07:48 [ERROR] webserver::request - [ID985]不支持的HTTP协议版本：HTTP/1.0
+
+  thread 'tokio-runtime-worker' (8387) panicked at src/main.rs:209:50:
+  called `Result::unwrap()` on an `Err` value: UnsupportedHttpVersion
+  2025-12-29 15:07:48 [ERROR] webserver::request - [ID986]不支持的HTTP协议版本：HTTP/1.0
+
+  thread 'tokio-runtime-worker' (8387) panicked at src/main.rs:209:50:
+  called `Result::unwrap()` on an `Err` value: UnsupportedHttpVersion
+  2025-12-29 15:07:48 [ERROR] webserver::request - [ID987]不支持的HTTP协议版本：HTTP/1.0
+
+  thread 'tokio-runtime-worker' (8387) panicked at src/main.rs:209:50:
+  called `Result::unwrap()` on an `Err` value: UnsupportedHttpVersion
+  2025-12-29 15:07:48 [ERROR] webserver::request - [ID988]不支持的HTTP协议版本：HTTP/1.0
+
+  thread 'tokio-runtime-worker' (8387) panicked at src/main.rs:209:50:
+  called `Result::unwrap()` on an `Err` value: UnsupportedHttpVersion
+  2025-12-29 15:07:48 [ERROR] webserver::request - [ID989]不支持的HTTP协议版本：HTTP/1.0
+
+  thread 'tokio-runtime-worker' (8387) panicked at src/main.rs:209:50:
+  called `Result::unwrap()` on an `Err` value: UnsupportedHttpVersion
+  2025-12-29 15:07:48 [ERROR] webserver::request - [ID990]不支持的HTTP协议版本：HTTP/1.0
+
+  thread 'tokio-runtime-worker' (8387) panicked at src/main.rs:209:50:
+  called `Result::unwrap()` on an `Err` value: UnsupportedHttpVersion
+  2025-12-29 15:07:48 [ERROR] webserver::request - [ID991]不支持的HTTP协议版本：HTTP/1.0
+
+  thread 'tokio-runtime-worker' (8387) panicked at src/main.rs:209:50:
+  called `Result::unwrap()` on an `Err` value: UnsupportedHttpVersion
+  2025-12-29 15:07:48 [ERROR] webserver::request - [ID992]不支持的HTTP协议版本：HTTP/1.0
+
+  thread 'tokio-runtime-worker' (8387) panicked at src/main.rs:209:50:
+  called `Result::unwrap()` on an `Err` value: UnsupportedHttpVersion
+  2025-12-29 15:07:48 [ERROR] webserver::request - [ID993]不支持的HTTP协议版本：HTTP/1.0
+
+  thread 'tokio-runtime-worker' (8371) panicked at src/main.rs:209:50:
+  called `Result::unwrap()` on an `Err` value: UnsupportedHttpVersion
+  2025-12-29 15:07:48 [ERROR] webserver::request - [ID994]不支持的HTTP协议版本：HTTP/1.0
+
+  thread 'tokio-runtime-worker' (8371) panicked at src/main.rs:209:50:
+  called `Result::unwrap()` on an `Err` value: UnsupportedHttpVersion
+  2025-12-29 15:07:48 [ERROR] webserver::request - [ID995]不支持的HTTP协议版本：HTTP/1.0
+
+  thread 'tokio-runtime-worker' (8371) panicked at src/main.rs:209:50:
+  called `Result::unwrap()` on an `Err` value: UnsupportedHttpVersion
+  2025-12-29 15:07:48 [ERROR] webserver::request - [ID996]不支持的HTTP协议版本：HTTP/1.0
+
+  thread 'tokio-runtime-worker' (8371) panicked at src/main.rs:209:50:
+  called `Result::unwrap()` on an `Err` value: UnsupportedHttpVersion
+  2025-12-29 15:07:48 [ERROR] webserver::request - [ID997]不支持的HTTP协议版本：HTTP/1.0
+
+  thread 'tokio-runtime-worker' (8371) panicked at src/main.rs:209:50:
+  called `Result::unwrap()` on an `Err` value: UnsupportedHttpVersion
+  2025-12-29 15:07:48 [ERROR] webserver::request - [ID998]不支持的HTTP协议版本：HTTP/1.0
+
+  thread 'tokio-runtime-worker' (8371) panicked at src/main.rs:209:50:
+  called `Result::unwrap()` on an `Err` value: UnsupportedHttpVersion
+  2025-12-29 15:07:48 [ERROR] webserver::request - [ID999]不支持的HTTP协议版本：HTTP/1.0
+
+  thread 'tokio-runtime-worker' (8371) panicked at src/main.rs:209:50:
+  called `Result::unwrap()` on an `Err` value: UnsupportedHttpVersion
+
+  ```bash
+  eslzzyl:~/W/c/webbench-1.5 $ ./webbench -c 10000 -t 10 --get --http11 http://xx.xx.xx.xx:7878/
+  Webbench - Simple Web Benchmark 1.5
+  Copyright (c) Radim Kolar 1997-2004, GPL Open Source Software.
+
+  Benchmarking: GET http://xx.xx.xx.xx:7878/ (using HTTP/1.1)
+  10000 clients, running 10 sec.
+
+  Speed=6864 pages/min, 101930 bytes/sec.
+  Requests: 1144 susceed, 0 failed.
+  ```
+
+  ```bash
+  eslzzyl:~/W/c/webbench-1.5 $ ./webbench -c 12000 -t 10 --get --http11 http://xx.xx.xx.xx:7878/
+  Webbench - Simple Web Benchmark 1.5
+  Copyright (c) Radim Kolar 1997-2004, GPL Open Source Software.
+
+  Benchmarking: GET http://xx.xx.xx.xx:7878/ (using HTTP/1.1)
+  12000 clients, running 10 sec.
+
+  Speed=5430 pages/min, 81993 bytes/sec.
+  Requests: 905 susceed, 0 failed.
+  ```
+
+  测试 20000 并发时同样出现问题。
+
+  测试机器：腾讯云上海 1核 2G 1M, Ubuntu 22.04
 
 ### 参考文献
 
@@ -211,7 +393,7 @@ sudo prlimit --pid [PID] --nofile=32768:32768
 
 #### 待修复的问题
 
-- `route` 找不到 `index.html` 时，应当返回根路径，以便`Response` 列出根文件夹下的文件列表。目前是默认 `index.html` 一定存在了，会 panic。
+- `route` 找不到 `index.html` 时，应当返回根路径，以便 `Response` 列出根文件夹下的文件列表。目前是默认 `index.html` 一定存在了，会 panic。
 - 文件缓存应当同时保存文件的修改时间，再次请求同一缓存块时比对时间，如果修改时间发生了变化，说明文件在缓存期间发生了变化，此时不应该返回缓存中的结果，而是应该重新读取文件。文件列表模式可以存储文件夹的修改时间。
 - **【严重问题】【存疑】** 在低速网络上传送稍大的二进制文件会被异常中断
 
