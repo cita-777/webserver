@@ -27,7 +27,7 @@ appenders:
             pattern: "{d(%Y-%m-%d %H:%M:%S)} {l} {t} - {m}{n}"
 # 对全局 log 进行配置
 root:
-    level: info
+    level: debug
     appenders:
         - stdout
         - log_file
