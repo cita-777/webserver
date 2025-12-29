@@ -17,7 +17,7 @@ use log::{debug, error, info, warn};
 use log4rs;
 use regex::Regex;
 use tokio::{
-    io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
+    io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader},
     net::{TcpListener, TcpStream},
     runtime::Builder,
 };
@@ -188,76 +188,134 @@ async fn handle_connection(
     root: &str,
     cache: Arc<Mutex<FileCache>>,
 ) {
-    let mut buffer = vec![0; 1024];
+    const MAX_REQUEST_HEADER_BYTES: usize = 32 * 1024;
 
-    // 等待tcpstream变得可读
-    stream.readable().await.unwrap();
+    let mut pending: Vec<u8> = Vec::with_capacity(1024);
 
-    match stream.try_read(&mut buffer) {
-        Ok(0) => return,
-        Err(e) => {
-            error!("[ID{}]读取TCPStream时遇到错误: {}", id, e);
-            panic!();
+    loop {
+        // 读取一个完整的 HTTP 请求头（到 \r\n\r\n 为止）
+        let request_bytes = match read_one_http_request(stream, &mut pending, MAX_REQUEST_HEADER_BYTES).await {
+            Ok(Some(bytes)) => bytes,
+            Ok(None) => return,
+            Err(e) => {
+                error!("[ID{}]读取HTTP请求时遇到错误: {}", id, e);
+                return;
+            }
+        };
+        debug!("[ID{}]HTTP请求接收完毕", id);
+
+        // 启动timer
+        let start_time = Instant::now();
+
+        let request = match Request::try_from(&request_bytes, id) {
+            Ok(r) => r,
+            Err(e) => {
+                error!("[ID{}]解析HTTP请求失败: {}", id, e);
+                return;
+            }
+        };
+        debug!("[ID{}]成功解析HTTP请求", id);
+
+        let keep_alive = request.should_keep_alive();
+
+        let result = route(&request.path(), id, root).await;
+        debug!("[ID{}]HTTP路由解析完毕", id);
+
+        // 如果path不存在，就返回404。使用Response::response_404
+        let mut response = match result {
+            Ok(path) => {
+                let path_str = match path.to_str() {
+                    Some(s) => s,
+                    None => {
+                        let path_str = path.to_str().unwrap();
+                        error!("[ID{}]无法将路径{}转换为str", id, path_str);
+                        return;
+                    }
+                };
+                Response::from(path_str, &request, id, &cache)
+            }
+            Err(Exception::FileNotFound) => {
+                warn!(
+                    "[ID{}]请求的路径：{} 不存在，返回404响应",
+                    id,
+                    &request.path()
+                );
+                Response::response_404(&request, id)
+            }
+            Err(e) => {
+                panic!("非法的错误类型：{}", e);
+            }
+        };
+
+        response.set_connection(keep_alive);
+
+        debug!(
+            "[ID{}]HTTP响应构建完成，服务端用时{}ms。",
+            id,
+            start_time.elapsed().as_millis()
+        );
+
+        info!(
+            "[ID{}] {}, {}, {}, {}, {}, {}, ",
+            id,
+            request.version(),
+            request.path(),
+            request.method(),
+            response.status_code(),
+            response.information(),
+            request.user_agent(),
+        );
+
+        stream.write_all(&response.as_bytes()).await.unwrap();
+        stream.flush().await.unwrap();
+        debug!("[ID{}]HTTP响应已写回", id);
+
+        if !keep_alive {
+            return;
         }
-        _ => {}
     }
-    debug!("[ID{}]HTTP请求接收完毕", id);
+}
 
-    // 启动timer
-    let start_time = Instant::now();
+/// 从 TCP 流中读取一个完整的 HTTP 请求头（以 \r\n\r\n 结束）。
+///
+/// 返回：
+/// - Ok(Some(bytes))：读取到一个请求头
+/// - Ok(None)：对端关闭连接且无剩余数据
+async fn read_one_http_request(
+    stream: &mut TcpStream,
+    pending: &mut Vec<u8>,
+    max_header_bytes: usize,
+) -> Result<Option<Vec<u8>>, std::io::Error> {
+    fn find_double_crlf(buf: &[u8]) -> Option<usize> {
+        buf.windows(4).position(|w| w == b"\r\n\r\n")
+    }
 
-    let request = Request::try_from(&buffer, id).unwrap();
-    debug!("[ID{}]成功解析HTTP请求", id);
-
-    let result = route(&request.path(), id, root).await;
-    debug!("[ID{}]HTTP路由解析完毕", id);
-
-    // 如果path不存在，就返回404。使用Response::response_404
-    let response = match result {
-        Ok(path) => {
-            let path_str = match path.to_str() {
-                Some(s) => s,
-                None => {
-                    let path_str = path.to_str().unwrap();
-                    error!("[ID{}]无法将路径{}转换为str", id, path_str);
-                    return;
-                }
-            };
-            Response::from(path_str, &request, id, &cache)
+    loop {
+        if let Some(pos) = find_double_crlf(pending) {
+            let end = pos + 4;
+            let head: Vec<u8> = pending.drain(..end).collect();
+            return Ok(Some(head));
         }
-        Err(Exception::FileNotFound) => {
-            warn!(
-                "[ID{}]请求的路径：{} 不存在，返回404响应",
-                id,
-                &request.path()
-            );
-            Response::response_404(&request, id)
+
+        if pending.len() > max_header_bytes {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "HTTP header too large",
+            ));
         }
-        Err(e) => {
-            panic!("非法的错误类型：{}", e);
+
+        let mut buf = [0u8; 4096];
+        let n = stream.read(&mut buf).await?;
+        if n == 0 {
+            if pending.is_empty() {
+                return Ok(None);
+            }
+            // 对端关闭连接但缓冲区里还有数据（可能是半个请求），交给上层解析处理
+            let leftover = std::mem::take(pending);
+            return Ok(Some(leftover));
         }
-    };
-
-    debug!(
-        "[ID{}]HTTP响应构建完成，服务端用时{}ms。",
-        id,
-        start_time.elapsed().as_millis()
-    );
-
-    info!(
-        "[ID{}] {}, {}, {}, {}, {}, {}, ",
-        id,
-        request.version(),
-        request.path(),
-        request.method(),
-        response.status_code(),
-        response.information(),
-        request.user_agent(),
-    );
-
-    stream.write(&response.as_bytes()).await.unwrap();
-    stream.flush().await.unwrap();
-    debug!("[ID{}]HTTP响应已写回", id);
+        pending.extend_from_slice(&buf[..n]);
+    }
 }
 
 /// 路由解析函数

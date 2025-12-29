@@ -12,6 +12,8 @@ pub struct Request {
     version: HttpVersion,
     user_agent: String,
     accept_encoding: Vec<HttpEncoding>,  // 压缩编码，可以支持多种编码，如果该vec为空说明不支持压缩
+    connection_close: bool,
+    connection_keep_alive: bool,
 }
 
 impl Request {
@@ -59,6 +61,8 @@ impl Request {
         // 确定剩余字段
         let mut user_agent = "".to_string();
         let mut accept_encoding = vec!();
+        let mut connection_close = false;
+        let mut connection_keep_alive = false;
         for line in &request_lines {
             // 确定user-agent，注意 HTTP请求头大小写不敏感
             if line.starts_with("user-agent") || line.starts_with("User-Agent") {
@@ -84,12 +88,32 @@ impl Request {
             }
         }
 
+        for line in &request_lines {
+            // Connection 头大小写不敏感；值也应按 token 解析，这里做最小实现
+            if line.to_ascii_lowercase().starts_with("connection:") {
+                // 兼容 "Connection: Keep-Alive" / "Connection: close" 等
+                let parts = line.splitn(2, ":").collect::<Vec<&str>>();
+                if parts.len() == 2 {
+                    let value = parts[1].trim().to_ascii_lowercase();
+                    if value.contains("close") {
+                        connection_close = true;
+                    }
+                    if value.contains("keep-alive") {
+                        connection_keep_alive = true;
+                    }
+                }
+                break;
+            }
+        }
+
         Ok(Self {
             method,
             path,
             version,
             user_agent,
             accept_encoding,
+            connection_close,
+            connection_keep_alive,
         })
     }
 }
@@ -118,5 +142,19 @@ impl Request {
     /// 返回当前浏览器接受的压缩编码
     pub fn accept_encoding(&self) -> &Vec<HttpEncoding> {
         &self.accept_encoding
+    }
+
+    /// 当前请求是否期望复用 TCP 连接（Keep-Alive）。
+    ///
+    /// - HTTP/1.1 默认 keep-alive（除非显式 Connection: close）
+    /// - HTTP/1.0 默认 close（除非显式 Connection: keep-alive）
+    pub fn should_keep_alive(&self) -> bool {
+        if self.connection_close {
+            return false;
+        }
+        match self.version {
+            HttpVersion::V1_1 => true,
+            HttpVersion::V1_0 => self.connection_keep_alive,
+        }
     }
 }

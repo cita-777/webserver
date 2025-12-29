@@ -46,6 +46,7 @@ pub struct Response {
     content_encoding: Option<HttpEncoding>,
     server_name: String,
     allow: Option<Vec<HttpRequestMethod>>,
+    connection: Option<&'static str>,
     content: Option<Bytes>,
 }
 
@@ -73,6 +74,7 @@ impl Response {
             content_encoding: None,
             server_name: SERVER_NAME.to_string(),
             allow: Some(ALLOWED_METHODS.to_vec()),
+            connection: None,
             content: None,
         }
     }
@@ -101,19 +103,22 @@ impl Response {
             None => debug!("[ID{}]不进行压缩", id),
         };
         
-        // 查找缓存
+        // 查找缓存（缓存中始终保存未压缩原文，避免不同客户端 encoding 不一致导致解码失败）
         let mut cache_lock = cache.lock().unwrap();
         match cache_lock.find(path) {
             Some(bytes) => {
                 debug!("[ID{}]缓存命中", id);
-                // 这里其实是有个潜在问题的。理论上不同客户端要求的encoding可能会不同，但是缓存却是共享的，导致encoding是相同的。
-                // 但是单客户端情况下可以忽略。而且目前所有主流浏览器也都支持gzip了。
-                response.content_length = bytes.len() as u64;
-                response.content = match headonly {
-                    // headonly时，不填入content（但正常设置length），否则填入找到的bytes
-                    true => None,
-                    false => Some(bytes.clone()),
-                };
+                if headonly {
+                    response.content_type = None;
+                    response.content = None;
+                    response.content_length = bytes.len() as u64;
+                } else {
+                    let raw: Vec<u8> = bytes.to_vec();
+                    let compressed = compress(raw, response.content_encoding).unwrap();
+                    response.content_length = compressed.len() as u64;
+                    response.content_type = Some(mime.to_string());
+                    response.content = Some(Bytes::from(compressed));
+                }
             },
             None => {
                 debug!("[ID{}]缓存未命中", id);
@@ -141,17 +146,18 @@ impl Response {
                             panic!();
                         }
                     }
-                    contents = compress(contents, response.content_encoding).unwrap();
+                    // 先把未压缩原文写入缓存，再按需压缩作为响应体
+                    cache_lock.push(path, Bytes::from(contents.clone()));
+                    let compressed = compress(contents, response.content_encoding).unwrap();
 
-                    response.content_length = contents.len() as u64;
+                    response.content_length = compressed.len() as u64;
                     debug!("[ID{}]Content-Length: {}", id, response.content_length);
 
                     let content_type_str = mime.to_string();
                     debug!("[ID{}]Content-Type: {}", id, &content_type_str);
                     response.content_type = Some(content_type_str);
                     
-                    response.content = Some(Bytes::from(contents.clone()));
-                    cache_lock.push(path, Bytes::from(contents));
+                    response.content = Some(Bytes::from(compressed));
                 }
             }
         }
@@ -238,19 +244,20 @@ impl Response {
             response.content_type = None;
         }
 
-        // 查找缓存
+        // 查找缓存（缓存中始终保存未压缩原文）
         let mut cache_lock = cache.lock().unwrap();
         match cache_lock.find(path) {
             Some(bytes) => {
                 debug!("[ID{}]缓存命中", id);
-                // 这里其实是有个潜在问题的。理论上不同客户端要求的encoding可能会不同，但是缓存却是共享的，导致encoding是相同的。
-                // 但是单客户端情况下可以忽略。而且目前所有主流浏览器也都支持gzip了。
-                response.content = match headonly {
-                    // headonly时，填入一个空字符串，否则填入找到的bytes
-                    true => None,
-                    false => Some(bytes.clone()),
-                };
-                response.content_length = bytes.len() as u64;
+                if headonly {
+                    response.content = None;
+                    response.content_length = bytes.len() as u64;
+                } else {
+                    let raw: Vec<u8> = bytes.to_vec();
+                    let compressed = compress(raw, response.content_encoding).unwrap();
+                    response.content_length = compressed.len() as u64;
+                    response.content = Some(Bytes::from(compressed));
+                }
             },
             None => {   // 缓存未命中，生成目录列表
                 debug!("[ID{}]缓存未命中", id);
@@ -260,15 +267,16 @@ impl Response {
                     dir_vec.push(entry.unwrap().path());
                 }
                 let content = HtmlBuilder::from_dir(path, &mut dir_vec).build();
-                let content_compressed = compress(content.into_bytes(), response.content_encoding).unwrap();
-                response.content_length = content_compressed.len() as u64;
-                // headonly时，填入一个空字符串，否则填入压缩好的content
-                response.content = match headonly {
-                    true => None,
-                    false => Some(Bytes::from(content_compressed.clone())),
-                };
-                // 无论是否是HEAD请求，都要写缓存
-                cache_lock.push(path, Bytes::from(content_compressed));
+                // 无论是否是HEAD请求，都写入未压缩原文缓存
+                cache_lock.push(path, Bytes::from(content.clone().into_bytes()));
+                if headonly {
+                    response.content_length = content.len() as u64;
+                    response.content = None;
+                } else {
+                    let content_compressed = compress(content.into_bytes(), response.content_encoding).unwrap();
+                    response.content_length = content_compressed.len() as u64;
+                    response.content = Some(Bytes::from(content_compressed));
+                }
             }
         }
         response
@@ -315,8 +323,14 @@ impl Response {
     }
 
     /// 设置响应协议版本，当前固定为HTTP1.1
-    fn set_version(&mut self) -> &mut Self {
-        self.version = HttpVersion::V1_1;
+    fn set_version(&mut self, version: HttpVersion) -> &mut Self {
+        self.version = version;
+        self
+    }
+
+    /// 设置 Connection 响应头
+    pub fn set_connection(&mut self, keep_alive: bool) -> &mut Self {
+        self.connection = Some(if keep_alive { "keep-alive" } else { "close" });
         self
     }
 
@@ -350,7 +364,7 @@ impl Response {
         Self::from_status_code(404, accept_encoding, id)
             .set_date()
             .set_code(404)
-            .set_version()
+            .set_version(*request.version())
             .to_owned()
     }
 
@@ -360,7 +374,7 @@ impl Response {
         Self::from_status_code(500, accept_encoding, id)
             .set_date()
             .set_code(500)
-            .set_version()
+            .set_version(*request.version())
             .to_owned()
     }
 
@@ -377,6 +391,7 @@ impl Response {
     pub fn from(path: &str, request: &Request, id: u128, cache: &Arc<Mutex<FileCache>>) -> Response {
         let accept_encoding = request.accept_encoding().to_vec();
         let method = request.method();
+        let request_version = *request.version();
         let metadata_result = fs::metadata(path);
 
         // 仅有下列方法得到支持，其他方法一律返回405
@@ -385,7 +400,7 @@ impl Response {
             && method != HttpRequestMethod::Options {
             return Self::from_status_code(405, accept_encoding, id)
                 .set_date()
-                .set_version()
+                .set_version(request_version)
                 .set_server_name()
                 .to_owned();
         }
@@ -396,7 +411,7 @@ impl Response {
             debug!("[ID{}]请求方法为OPTIONS", id);
             return Self::from_status_code(204, accept_encoding, id)
                 .set_date()
-                .set_version()
+                .set_version(request_version)
                 .set_server_name()
                 .to_owned();
         }
@@ -417,7 +432,7 @@ impl Response {
                     Self::from_dir(path, accept_encoding, id, cache, headonly)
                         .set_date()
                         .set_code(200)
-                        .set_version()
+                        .set_version(request_version)
                         .set_server_name()
                         .to_owned()
                 } else {    // path是文件
@@ -443,7 +458,7 @@ impl Response {
                         return Self::from_html(&html, accept_encoding, id, headonly)
                             .set_date()
                             .set_code(200)
-                            .set_version()
+                            .set_version(request_version)
                             .set_server_name()
                             .to_owned();
                     }
@@ -452,7 +467,7 @@ impl Response {
                     Self::from_file(path, accept_encoding, id, cache, headonly, mime)
                         .set_date()
                         .set_code(200)
-                        .set_version()
+                        .set_version(request_version)
                         .set_server_name()
                         .to_owned()
                 }
@@ -510,6 +525,11 @@ impl Response {
             "Content-Length: ", content_length, CRLF,
             "Date: ", date, CRLF,
             "Server: ", server, CRLF,
+            // 选择性地填入connection
+            match self.connection {
+                Some(c) => ["Connection: ", c, CRLF].concat(),
+                None => "".to_string(),
+            }.as_str(),
             // 选择性地填入allow
             match &self.allow {
                 Some(a) => {
