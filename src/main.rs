@@ -1,43 +1,36 @@
 #![allow(clippy::unused_io_amount)]
 
+mod cache;
+mod config;
 mod exception;
 mod param;
-mod config;
 mod request;
 mod response;
-mod cache;
 mod util;
 
-use request::Request;
-use config::Config;
-use response::Response;
 use cache::FileCache;
+use config::Config;
+use request::Request;
+use response::Response;
 
-use tokio::{
-    net::{TcpListener, TcpStream},
-    io::{
-        AsyncWriteExt,
-        AsyncBufReadExt,
-        BufReader
-    },
-    runtime::Builder,
-};
-use log::{error, warn, info, debug};
+use log::{debug, error, info, warn};
 use log4rs;
 use regex::Regex;
+use tokio::{
+    io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
+    net::{TcpListener, TcpStream},
+    runtime::Builder,
+};
 
 use std::{
     net::{Ipv4Addr, SocketAddrV4},
     path::{Path, PathBuf},
-    time::Instant,
-    sync::{Arc, Mutex},
     process::Command,
+    sync::{Arc, Mutex},
+    time::Instant,
 };
 
-use crate::{
-    param::HTML_INDEX,
-    exception::Exception,
-};
+use crate::{exception::Exception, param::HTML_INDEX};
 
 #[tokio::main]
 async fn main() {
@@ -59,14 +52,10 @@ async fn main() {
 
     // 初始化文件缓存
     let cache_size = config.cache_size();
-    let cache = Arc::new(
-        Mutex::new(FileCache::from_capacity(cache_size))
-    );
+    let cache = Arc::new(Mutex::new(FileCache::from_capacity(cache_size)));
 
     // 检测PHP环境
-    let php_result = Command::new("php")
-        .arg("-v")
-        .output();
+    let php_result = Command::new("php").arg("-v").output();
     match php_result {
         Ok(o) => {
             if o.status.success() {
@@ -94,7 +83,7 @@ async fn main() {
     // 地址，本地调试用127.0.0.1
     let address = match config.local() {
         true => Ipv4Addr::new(127, 0, 0, 1),
-        false => Ipv4Addr::new(0, 0, 0, 0)
+        false => Ipv4Addr::new(0, 0, 0, 0),
     };
     info!("服务端将在{}地址上监听Socket连接", address);
     // 拼接socket
@@ -134,19 +123,19 @@ async fn main() {
                             let mut flag = shutdown_flag.lock().unwrap();
                             *flag = true;
                             break;
-                        },
+                        }
                         "help" => {
                             println!("== Webserver Help ==");
                             println!("输入stop并再发出一次连接请求以停机");
                             println!("输入status以查看当前服务器状态");
                             println!("====================");
-                        },
+                        }
                         "status" => {
                             let active_count = *active_connection.lock().unwrap();
                             println!("== Webserver 状态 ===");
                             println!("当前连接数: {}", active_count);
                             println!("====================");
-                        },
+                        }
                         _ => {
                             println!("无效的命令：{}", cmd);
                         }
@@ -188,12 +177,17 @@ async fn main() {
 }
 
 /// 处理TCP连接
-/// 
+///
 /// 参数：
 /// - `stream`: 建立好的`TcpStream`
 /// - `config`: Web服务器配置类型，在当前子线程建立时使用`Arc<T>`共享
 /// - `id`: 当前TCP连接的ID
-async fn handle_connection(stream: &mut TcpStream, id: u128, root: &str, cache: Arc<Mutex<FileCache>>) {
+async fn handle_connection(
+    stream: &mut TcpStream,
+    id: u128,
+    root: &str,
+    cache: Arc<Mutex<FileCache>>,
+) {
     let mut buffer = vec![0; 1024];
 
     // 等待tcpstream变得可读
@@ -204,8 +198,8 @@ async fn handle_connection(stream: &mut TcpStream, id: u128, root: &str, cache: 
         Err(e) => {
             error!("[ID{}]读取TCPStream时遇到错误: {}", id, e);
             panic!();
-        },
-        _ => {},
+        }
+        _ => {}
     }
     debug!("[ID{}]HTTP请求接收完毕", id);
 
@@ -227,25 +221,32 @@ async fn handle_connection(stream: &mut TcpStream, id: u128, root: &str, cache: 
                     let path_str = path.to_str().unwrap();
                     error!("[ID{}]无法将路径{}转换为str", id, path_str);
                     return;
-                },
+                }
             };
             Response::from(path_str, &request, id, &cache)
-        },
+        }
         Err(Exception::FileNotFound) => {
-            warn!("[ID{}]请求的路径：{} 不存在，返回404响应", id, &request.path());
+            warn!(
+                "[ID{}]请求的路径：{} 不存在，返回404响应",
+                id,
+                &request.path()
+            );
             Response::response_404(&request, id)
-        },
+        }
         Err(e) => {
             panic!("非法的错误类型：{}", e);
         }
     };
 
-    debug!("[ID{}]HTTP响应构建完成，服务端用时{}ms。",
+    debug!(
+        "[ID{}]HTTP响应构建完成，服务端用时{}ms。",
         id,
         start_time.elapsed().as_millis()
     );
 
-    info!("[ID{}] {}, {}, {}, {}, {}, {}, ", id,
+    info!(
+        "[ID{}] {}, {}, {}, {}, {}, {}, ",
+        id,
         request.version(),
         request.path(),
         request.method(),
@@ -260,12 +261,12 @@ async fn handle_connection(stream: &mut TcpStream, id: u128, root: &str, cache: 
 }
 
 /// 路由解析函数
-/// 
+///
 /// ## 参数：
 /// - `path`：请求路径
 /// - `config`：Web服务器配置类型
 /// - `id`: 当前TCP连接的ID
-/// 
+///
 /// ## 返回：
 /// - `u8`: 状态码。0为正常，1为404
 /// - `PathBuf`: 文件的完整路径
@@ -275,7 +276,8 @@ async fn route(path: &str, id: u128, root: &str) -> Result<PathBuf, Exception> {
         debug!("[ID{}]请求路径为根目录，返回index", id);
         let path = PathBuf::from(HTML_INDEX);
         return Ok(path);
-    } else if path == "*" {     // 常见于OPTIONS方法
+    } else if path == "*" {
+        // 常见于OPTIONS方法
         debug!("[ID{}]请求路径为*", id);
         let path = PathBuf::from("*");
         return Ok(path);
